@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Speed Detection System</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:       #050810;
+    --panel:    #0b0f1a;
+    --border:   #1a2340;
+    --accent:   #00e5ff;
+    --danger:   #ff2d55;
+    --ok:       #00e676;
+    --warn:     #ffea00;
+    --text:     #c8d8f0;
+    --muted:    #4a5a7a;
+    --glow:     0 0 18px rgba(0,229,255,0.25);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content:'';
+    position:fixed; inset:0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,229,255,0.015) 2px,
+      rgba(0,229,255,0.015) 4px
+    );
+    pointer-events:none;
+    z-index:999;
+  }
+
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, #050810, #081020);
+  }
+
+  .logo {
+    display:flex; align-items:center; gap:12px;
+  }
+
+  .logo-icon {
+    width:38px; height:38px;
+    background: var(--accent);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px;
+  }
+
+  .logo h1 {
+    font-size:1.6rem; font-weight:700; letter-spacing:3px;
+    color:var(--accent); text-transform:uppercase;
+    text-shadow: var(--glow);
+  }
+
+  .logo span {
+    font-family:'Share Tech Mono'; font-size:0.7rem;
+    color:var(--muted); letter-spacing:2px;
+  }
+
+  .header-right {
+    display:flex; align-items:center; gap:20px;
+  }
+
+  .live-badge {
+    display:flex; align-items:center; gap:7px;
+    font-family:'Share Tech Mono'; font-size:0.75rem;
+    color:var(--ok); letter-spacing:2px;
+  }
+
+  .live-dot {
+    width:8px; height:8px; border-radius:50%;
+    background:var(--ok);
+    animation: pulse 1.2s infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:0.4; transform:scale(0.7); }
+  }
+
+  /* Speed limit control */
+  .limit-control {
+    display:flex; align-items:center; gap:10px;
+    background:var(--panel); border:1px solid var(--border);
+    padding:6px 14px; border-radius:6px;
+  }
+
+  .limit-control label {
+    font-size:0.8rem; color:var(--muted); letter-spacing:1px;
+  }
+
+  .limit-control input {
+    width:60px; background:transparent;
+    border:none; border-bottom:1px solid var(--accent);
+    color:var(--accent); font-family:'Share Tech Mono';
+    font-size:1rem; text-align:center; outline:none;
+  }
+
+  .limit-control button {
+    background:var(--accent); color:#000;
+    border:none; padding:4px 12px; border-radius:4px;
+    font-family:'Rajdhani'; font-weight:700; font-size:0.85rem;
+    cursor:pointer; letter-spacing:1px;
+    transition: opacity 0.2s;
+  }
+  .limit-control button:hover { opacity:0.8; }
+
+  /* Main layout */
+  .main {
+    display:grid;
+    grid-template-columns: 1fr 360px;
+    gap:0;
+    height: calc(100vh - 70px);
+  }
+
+  /* Video panel */
+  .video-panel {
+    position:relative;
+    background:#000;
+    display:flex; align-items:center; justify-content:center;
+    border-right:1px solid var(--border);
+    overflow:hidden;
+  }
+
+  .video-panel img {
+    width:100%; height:100%; object-fit:contain;
+  }
+
+  .video-overlay {
+    position:absolute; top:16px; left:16px;
+    font-family:'Share Tech Mono'; font-size:0.7rem;
+    color:var(--accent); letter-spacing:1px;
+    text-shadow: var(--glow);
+  }
+
+  /* Corner brackets */
+  .corner { position:absolute; width:24px; height:24px; }
+  .corner.tl { top:12px; left:12px; border-top:2px solid var(--accent); border-left:2px solid var(--accent); }
+  .corner.tr { top:12px; right:12px; border-top:2px solid var(--accent); border-right:2px solid var(--accent); }
+  .corner.bl { bottom:12px; left:12px; border-bottom:2px solid var(--accent); border-left:2px solid var(--accent); }
+  .corner.br { bottom:12px; right:12px; border-bottom:2px solid var(--accent); border-right:2px solid var(--accent); }
+
+  /* Sidebar */
+  .sidebar {
+    display:flex; flex-direction:column;
+    background:var(--panel); overflow-y:auto;
+  }
+
+  /* Stat cards */
+  .stats-grid {
+    display:grid; grid-template-columns:1fr 1fr;
+    gap:1px; background:var(--border);
+    border-bottom:1px solid var(--border);
+  }
+
+  .stat-card {
+    background:var(--panel);
+    padding:18px 16px;
+    position:relative; overflow:hidden;
+  }
+
+  .stat-card::before {
+    content:'';
+    position:absolute; top:0; left:0; right:0; height:2px;
+  }
+  .stat-card.blue::before   { background:var(--accent); }
+  .stat-card.red::before    { background:var(--danger); }
+  .stat-card.green::before  { background:var(--ok); }
+  .stat-card.yellow::before { background:var(--warn); }
+
+  .stat-label {
+    font-size:0.65rem; letter-spacing:2px;
+    color:var(--muted); text-transform:uppercase; margin-bottom:6px;
+  }
+
+  .stat-value {
+    font-family:'Share Tech Mono'; font-size:1.8rem;
+    font-weight:700; line-height:1;
+  }
+  .stat-card.blue   .stat-value { color:var(--accent); }
+  .stat-card.red    .stat-value { color:var(--danger); }
+  .stat-card.green  .stat-value { color:var(--ok); }
+  .stat-card.yellow .stat-value { color:var(--warn); }
+
+  .stat-sub {
+    font-size:0.65rem; color:var(--muted); margin-top:4px;
+  }
+
+  /* Log table */
+  .log-section {
+    flex:1; display:flex; flex-direction:column; overflow:hidden;
+  }
+
+  .log-header {
+    padding:14px 16px;
+    font-size:0.7rem; letter-spacing:3px;
+    color:var(--accent); text-transform:uppercase;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:8px;
+  }
+
+  .log-header::before {
+    content:''; width:6px; height:6px;
+    background:var(--accent); border-radius:50%;
+    box-shadow: var(--glow);
+  }
+
+  .log-body { flex:1; overflow-y:auto; }
+
+  .log-body::-webkit-scrollbar { width:4px; }
+  .log-body::-webkit-scrollbar-track { background:var(--bg); }
+  .log-body::-webkit-scrollbar-thumb { background:var(--border); }
+
+  .log-row {
+    display:grid;
+    grid-template-columns: 70px 1fr 70px 55px;
+    padding:10px 16px;
+    border-bottom:1px solid rgba(26,35,64,0.5);
+    font-size:0.75rem;
+    animation: slideIn 0.3s ease;
+    transition: background 0.2s;
+  }
+
+  .log-row:hover { background:rgba(0,229,255,0.04); }
+
+  @keyframes slideIn {
+    from { opacity:0; transform:translateX(10px); }
+    to   { opacity:1; transform:translateX(0); }
+  }
+
+  .log-time { font-family:'Share Tech Mono'; color:var(--muted); font-size:0.68rem; }
+  .log-plate { font-family:'Share Tech Mono'; color:var(--text); font-weight:700; }
+  .log-speed { font-family:'Share Tech Mono'; text-align:right; }
+  .log-status {
+    text-align:center; font-size:0.6rem; letter-spacing:1px;
+    font-weight:700; padding:2px 0; border-radius:3px;
+    align-self:center;
+  }
+
+  .log-status.ok      { color:var(--ok); }
+  .log-status.danger  { color:var(--danger); background:rgba(255,45,85,0.1); }
+
+  .log-speed.ok     { color:var(--ok); }
+  .log-speed.danger { color:var(--danger); }
+
+  /* Alert flash */
+  .alert-flash {
+    display:none;
+    position:fixed; top:0; left:0; right:0;
+    background:rgba(255,45,85,0.15);
+    border-bottom:2px solid var(--danger);
+    padding:12px 32px;
+    font-family:'Share Tech Mono'; font-size:0.85rem;
+    color:var(--danger); letter-spacing:2px;
+    z-index:1000;
+    animation: flashIn 0.3s ease;
+  }
+
+  @keyframes flashIn {
+    from { opacity:0; transform:translateY(-10px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  .log-cols {
+    display:grid;
+    grid-template-columns: 70px 1fr 70px 55px;
+    padding:6px 16px;
+    border-bottom:1px solid var(--border);
+    font-size:0.6rem; letter-spacing:1px;
+    color:var(--muted); text-transform:uppercase;
+  }
+
+  .no-data {
+    text-align:center; padding:40px 16px;
+    color:var(--muted); font-size:0.8rem; letter-spacing:1px;
+  }
+</style>
+</head>
+<body>
+
+<div class="alert-flash" id="alertFlash">🚨 OVERSPEED DETECTED — CHECK LOG</div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <h1>Speed Detection</h1>
+      <span>YOLOv10 · REAL-TIME MONITORING</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="limit-control">
+      <label>LIMIT</label>
+      <input type="number" id="limitInput" value="{{ speed_limit }}" min="10" max="200"/>
+      <span style="color:var(--muted);font-size:0.75rem">km/h</span>
+      <button onclick="setLimit()">SET</button>
+    </div>
+    <div class="live-badge">
+      <div class="live-dot"></div> LIVE
+    </div>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- Video Feed -->
+  <div class="video-panel">
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <div class="video-overlay" id="frameTime">INITIALIZING…</div>
+    <img src="/video_feed" alt="Live Feed"/>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card blue">
+        <div class="stat-label">Total Vehicles</div>
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-sub">detected</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Overspeeding</div>
+        <div class="stat-value" id="statOver">0</div>
+        <div class="stat-sub">violations</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="stat-label">Avg Speed</div>
+        <div class="stat-value" id="statAvg">0</div>
+        <div class="stat-sub">km/h</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Alerts Sent</div>
+        <div class="stat-value" id="statAlerts">0</div>
+        <div class="stat-sub">emails</div>
+      </div>
+    </div>
+
+    <!-- Detection Log -->
+    <div class="log-section">
+      <div class="log-header">Detection Log</div>
+      <div class="log-cols">
+        <span>Time</span>
+        <span>Plate</span>
+        <span style="text-align:right">Speed</span>
+        <span style="text-align:center">Status</span>
+      </div>
+      <div class="log-body" id="logBody">
+        <div class="no-data">Waiting for detections…</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  let lastOverCount = 0;
+
+  // Update stats
+  async function updateStats() {
+    try {
+      const r = await fetch('/api/stats');
+      const d = await r.json();
+      document.getElementById('statTotal').textContent  = d.total_vehicles;
+      document.getElementById('statOver').textContent   = d.overspeeding;
+      document.getElementById('statAvg').textContent    = d.avg_speed;
+      document.getElementById('statAlerts').textContent = d.alerts_sent;
+
+      // Flash alert banner if new overspeed
+      if (d.overspeeding > lastOverCount) {
+        lastOverCount = d.overspeeding;
+        const flash = document.getElementById('alertFlash');
+        flash.style.display = 'block';
+        setTimeout(() => flash.style.display = 'none', 3000);
+      }
+    } catch(e) {}
+  }
+
+  // Update log
+  async function updateLog() {
+    try {
+      const r = await fetch('/api/log');
+      const rows = await r.json();
+      const body = document.getElementById('logBody');
+
+      if (!rows.length) {
+        body.innerHTML = '<div class="no-data">Waiting for detections…</div>';
+        return;
+      }
+
+      body.innerHTML = rows.map(row => {
+        const isOver = row.status === 'OVERSPEED';
+        return `
+          <div class="log-row">
+            <span class="log-time">${row.time}</span>
+            <span class="log-plate">${row.plate}</span>
+            <span class="log-speed ${isOver ? 'danger' : 'ok'}">${row.speed}</span>
+            <span class="log-status ${isOver ? 'danger' : 'ok'}">${isOver ? '⚠ OVER' : '✓ OK'}</span>
+          </div>`;
+      }).join('');
+    } catch(e) {}
+  }
+
+  // Frame time
+  function updateTime() {
+    const now = new Date();
+    document.getElementById('frameTime').textContent =
+      now.toLocaleTimeString('en-GB') + '  |  YOLOv10 ACTIVE';
+  }
+
+  // Set speed limit
+  async function setLimit() {
+    const val = document.getElementById('limitInput').value;
+    await fetch('/api/set_limit', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({limit: parseInt(val)})
+    });
+  }
+
+  // Poll
+  setInterval(updateStats, 1500);
+  setInterval(updateLog,   2000);
+  setInterval(updateTime,  1000);
+  updateStats();
+  updateLog();
+  updateTime();
+</script>
+</body>
+</html>
